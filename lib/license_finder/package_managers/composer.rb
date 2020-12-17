@@ -4,7 +4,11 @@ require 'json'
 
 module LicenseFinder
   class Composer < PackageManager
-    SHELL_COMMAND = 'composer licenses --format=json'
+    def initialize(options = {})
+      super
+      @composer_path = options[:composer_path] || "composer"
+      @check_require_only = !!options[:composer_check_require_only]
+    end
 
     def possible_package_paths
       [project_path.join('composer.lock'), project_path.join('composer.json')]
@@ -12,7 +16,7 @@ module LicenseFinder
 
     def current_packages
       dependency_list.map do |name, dependency|
-        path_command = "composer show #{name} -P"
+        path_command = "#{@composer_path} show #{name} -P"
         stdout, _stderr, status = Dir.chdir(project_path) { Cmd.run(path_command) }
 
         path = status.success? ? stdout.split(' ').last : ''
@@ -33,7 +37,7 @@ module LicenseFinder
     end
 
     def prepare_command
-      'composer install --no-plugins --no-scripts --ignore-platform-reqs --no-interaction'
+      "#{@composer_path} install --no-plugins --no-scripts --ignore-platform-reqs --no-interaction"
     end
 
     def package_path
@@ -49,9 +53,13 @@ module LicenseFinder
       json.fetch('dependencies', {}).reject { |_, d| d.is_a?(String) }
     end
 
+    def get_licenses_command
+      "#{@composer_path} licenses --format=json" + (@check_require_only ? " --no-dev" : "")
+    end
+
     def composer_json
-      stdout, stderr, status = Dir.chdir(project_path) { Cmd.run(Composer::SHELL_COMMAND) }
-      raise "Command '#{Composer::SHELL_COMMAND}' failed to execute: #{stderr}" unless status.success?
+      stdout, stderr, status = Dir.chdir(project_path) { Cmd.run(get_licenses_command) }
+      raise "Get licenses command '#{Composer.get_licenses_command}' failed to execute: #{stderr}" unless status.success?
 
       JSON(stdout)
     end
